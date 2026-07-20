@@ -32,12 +32,62 @@ app.use(session({
 }));
 
 // ========== DATABASE CONNECTION ==========
+// ========== DATABASE CONNECTION ==========
+console.log('🔍 Connecting to database...');
+
+let dbConfig = {};
+
+// Cek apakah ada MYSQL_URL (dari Railway)
+if (process.env.MYSQL_URL) {
+    try {
+        const parsed = new URL(process.env.MYSQL_URL);
+        dbConfig = {
+            host: parsed.hostname,
+            user: parsed.username,
+            password: parsed.password,
+            database: parsed.pathname.slice(1), // ambil nama database
+            port: parsed.port || 3306
+        };
+        console.log('✅ Using MYSQL_URL from Railway');
+        console.log('   Host:', dbConfig.host);
+        console.log('   Database:', dbConfig.database);
+    } catch (error) {
+        console.error('❌ Error parsing MYSQL_URL:', error.message);
+        process.exit(1);
+    }
+} else {
+    // Fallback: untuk local development
+    dbConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'coffee_shop',
+        port: process.env.DB_PORT || 3306
+    };
+    console.log('✅ Using individual DB variables');
+}
+
 const db = mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT
+    ...dbConfig,
+    connectTimeout: 10000,
+    acquireTimeout: 10000
+});
+
+db.connect((err) => {
+    if (err) {
+        console.error('❌ Database connection error:', err);
+        console.error('   Please check your database configuration');
+        return;
+    }
+    console.log('✅ Database connected successfully!');
+});
+
+// Handle database errors
+db.on('error', (err) => {
+    console.error('Database error:', err);
+    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+        console.log('⚠️ Database connection lost. Please restart the app.');
+    }
 });
 
 db.connect((err) => {
