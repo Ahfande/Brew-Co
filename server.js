@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const session = require('express-session');
 const cors = require('cors');
 
@@ -32,12 +32,10 @@ app.use(session({
 }));
 
 // ========== DATABASE CONNECTION ==========
-// ========== DATABASE CONNECTION ==========
 console.log('🔍 Connecting to database...');
 
 let dbConfig = {};
 
-// Cek apakah ada MYSQL_URL (dari Railway)
 if (process.env.MYSQL_URL) {
     try {
         const parsed = new URL(process.env.MYSQL_URL);
@@ -45,7 +43,7 @@ if (process.env.MYSQL_URL) {
             host: parsed.hostname,
             user: parsed.username,
             password: parsed.password,
-            database: parsed.pathname.slice(1), // ambil nama database
+            database: parsed.pathname.slice(1),
             port: parsed.port || 3306
         };
         console.log('✅ Using MYSQL_URL from Railway');
@@ -56,7 +54,6 @@ if (process.env.MYSQL_URL) {
         process.exit(1);
     }
 } else {
-    // Fallback: untuk local development
     dbConfig = {
         host: process.env.DB_HOST || 'localhost',
         user: process.env.DB_USER || 'root',
@@ -67,16 +64,28 @@ if (process.env.MYSQL_URL) {
     console.log('✅ Using individual DB variables');
 }
 
+// Buat koneksi dengan mysql2
 const db = mysql.createConnection({
     ...dbConfig,
     connectTimeout: 10000,
-    acquireTimeout: 10000
+    // Tambahkan ini untuk mengatasi masalah auth
+    authPlugins: {
+        mysql_clear_password: () => () => Buffer.from(dbConfig.password + '\0')
+    }
 });
 
+// Koneksi ke database
 db.connect((err) => {
     if (err) {
-        console.error('❌ Database connection error:', err);
-        console.error('   Please check your database configuration');
+        console.error('❌ Database connection error:');
+        console.error('   Code:', err.code);
+        console.error('   Message:', err.message);
+        console.error('\n   Please check:');
+        console.error('   1. Host:', dbConfig.host);
+        console.error('   2. Database:', dbConfig.database);
+        console.error('   3. Username:', dbConfig.user);
+        console.error('   4. Password: [HIDDEN]');
+        console.error('   5. Port:', dbConfig.port);
         return;
     }
     console.log('✅ Database connected successfully!');
@@ -86,7 +95,7 @@ db.connect((err) => {
 db.on('error', (err) => {
     console.error('Database error:', err);
     if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        console.log('⚠️ Database connection lost. Please restart the app.');
+        console.log('⚠️ Database connection lost.');
     }
 });
 
