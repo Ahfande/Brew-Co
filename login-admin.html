@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Admin - Coffee</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="login-admin.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-right">
+            <h3>Admin Login</h3>
+            <div class="welcome-text">Selamat datang kembali, Admin!</div>
+            
+            <div id="errorMessage" class="error-message"></div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <div class="input-group">
+                        <i class="fa-solid fa-user"></i>
+                        <input type="text" id="username" placeholder="Username" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="input-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="password" placeholder="Password" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-login">Login →</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="login-admin.js"></script>
+</body>
+</html>

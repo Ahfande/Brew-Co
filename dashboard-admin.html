@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - CoffeeShop</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="dashboard-admin.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">
+            <i class="fas fa-mug-hot"></i>
+            <h2>Admin CoffeeShop</h2>
+        </div>
+        <div class="nav-links">
+            <a class="nav-link active" data-section="dashboard">Dashboard</a>
+            <a class="nav-link" data-section="produk">Kelola Produk</a>
+            <a class="nav-link" data-section="order">Lihat Order</a>
+        </div>
+        <div class="user-info">
+            <i class="fas fa-user-shield"></i>
+            <span id="adminName">Admin</span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <!-- Dashboard Section -->
+        <div id="dashboard" class="content-section active">
+            <div class="stats-container" id="statsContainer"></div>
+        </div>
+
+        <!-- Kelola Produk Section -->
+        <div id="produk" class="content-section">
+            <div class="section-header">
+                <h2><i class="fas fa-box"></i> Kelola Produk Kopi</h2>
+                <button class="btn-add" onclick="showAddProductModal()">
+                    <i class="fas fa-plus"></i> Tambah Produk
+                </button>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchProduct" placeholder="Cari produk...">
+            </div>
+            <div class="table-container">
+                <table id="productsTable">
+                    <thead>
+                        <tr><th>ID</th><th>Gambar</th><th>Nama</th><th>Harga</th><th>Deskripsi</th><th>Aksi</th></tr>
+                    </thead>
+                    <tbody id="productsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Lihat Order Section -->
+        <div id="order" class="content-section">
+            <div class="section-header">
+                <h2><i class="fas fa-shopping-cart"></i> Semua Order</h2>
+                <div>
+                    <select id="filterStatus" onchange="filterOrders()" style="background: rgba(0,0,0,0.5); color: white; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.3);">
+                        <option value="all">Semua Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="proses">Diproses</option>
+                        <option value="selesai">Selesai</option>
+                    </select>
+                </div>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchOrder" placeholder="Cari order (ID/Nama)..." onkeyup="filterOrders()">
+            </div>
+            <div class="table-container">
+                <table id="ordersTable">
+                    <thead>
+                        <tr><th>ID Order</th><th>Pelanggan</th><th>Produk</th><th>Jumlah</th><th>Total</th><th>Status</th><th>Tanggal</th><th>Aksi</th></tr>
+                    </thead>
+                    <tbody id="ordersTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal untuk tambah/edit produk -->
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Tambah Produk</h3>
+            <form id="productForm">
+                <input type="hidden" id="productId">
+                <div class="form-group">
+                    <label>Nama Produk</label>
+                    <input type="text" id="productName" required>
+                </div>
+                <div class="form-group">
+                    <label>Harga (Rp)</label>
+                    <input type="number" id="productPrice" required>
+                </div>
+                <div class="form-group">
+                    <label>Deskripsi</label>
+                    <textarea id="productDesc" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Gambar Produk</label>
+                    <input type="file" id="productImage" accept="image/*" onchange="previewImage(this)">
+                    <div class="image-preview" id="imagePreview"></div>
+                    <div class="current-image" id="currentImageInfo" style="display:none;"></div>
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save">Simpan</button>
+                    <button type="button" class="btn-cancel" onclick="closeModal()">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal untuk update status order -->
+    <div id="statusModal" class="modal">
+        <div class="modal-content">
+            <h3>Update Status Order</h3>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="orderStatus">
+                    <option value="pending">Pending</option>
+                    <option value="proses">Diproses</option>
+                    <option value="selesai">Selesai</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-save" onclick="updateOrderStatus()">Update</button>
+                <button class="btn-cancel" onclick="closeStatusModal()">Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="dashboard-admin.js"></script>
+</body>
+</html>

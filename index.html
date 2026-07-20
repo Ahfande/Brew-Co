@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - CakeShop</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="dashboard-user.css" />
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="logo">
+            <i class="fas fa-mug-hot"></i>
+            <h2>Brew & Co.</h2>
+        </div>
+        <div class="nav-links">
+            <div class="nav-link active" data-section="pilihkopi">Menu</div>
+            <div class="nav-link" data-section="order">Order</div>
+            <div class="nav-link" data-section="lihatorder">Lihat Order</div>
+        </div>
+        <div class="user-info">
+            <i class="fas fa-user-circle"></i>
+            <span id="usernameDisplay">Pengguna</span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <div class="welcome-section" id="welcomeSection">
+            <h1 id="welcomeMessage">Selamat Datang di Brew & Co. ☕</h1>
+            <p>Nikmati berbagai pilihan kopi terbaik kami</p>
+        </div>
+
+        <div id="pilihkopi" class="content-section active">
+            <div class="coffee-grid" id="coffeeGrid"></div>
+        </div>
+
+        <div id="order" class="content-section">
+            <div class="order-form-container">
+                <h2><i class="fas fa-shopping-cart"></i> Buat Order Baru</h2>
+                <form id="orderForm">
+                    <div class="form-group">
+                        <label>Nama Lengkap</label>
+                        <input type="text" id="customerName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>No. HP</label>
+                        <input type="text" id="customerPhone" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Alamat</label>
+                        <textarea id="customerAddress" rows="2" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Pilih Menu</label>
+                        <select id="selectedProduct" required>
+                            <option value="">Pilih menu favorit Anda</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Jumlah</label>
+                        <input type="number" id="quantity" min="1" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Catatan (opsional)</label>
+                        <textarea id="notes" rows="3" placeholder="Contoh: kurang manis, pake es batu banyak, dll"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Total Harga</label>
+                        <input type="text" id="totalPrice" readonly style="background: rgba(0,0,0,0.3); font-size: 18px; font-weight: 700; color: #ffb347;">
+                    </div>
+                    <button type="submit" class="submit-order-btn">Pesan Sekarang →</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="lihatorder" class="content-section">
+            <div id="ordersList" class="orders-list"></div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="dashboard-user.js"></script>
+  </body>
+</html>
