@@ -1,5 +1,5 @@
 // register.js
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'https://brew-co-production.up.railway.app/api';
 
 document.getElementById('registerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
