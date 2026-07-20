@@ -33,10 +33,11 @@ app.use(session({
 
 // ========== DATABASE CONNECTION ==========
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'coffee_shop'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT
 });
 
 db.connect((err) => {
@@ -441,10 +442,8 @@ app.get('/api/admin/stats', isAdmin, (req, res) => {
     });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 8080;
+
 app.listen(PORT, () => {
-    console.log(`\n🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📝 User login: http://localhost:${PORT}/api/login`);
-    console.log(`👑 Admin login: http://localhost:${PORT}/api/admin/login`);
-    console.log(`🔍 Session check: http://localhost:${PORT}/api/me\n`);
+    console.log(`🚀 Server running on port ${PORT}`);
 });
