@@ -37,91 +37,44 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         existingSuccess.remove();
     }
     
-    // Disable button saat proses
-    const loginBtn = document.querySelector('.btn-login');
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'Loading...';
-    
     try {
-        console.log('📤 Sending login request...');
-        console.log('📝 Username:', username);
-        
         const response = await fetch(`${API_URL}/login`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Content-Type': 'application/json'
             },
-            credentials: 'include',  // INI PENTING! Kirim cookie
+            credentials: 'include',  // ← INI PENTING! Kirim cookie
             body: JSON.stringify({
                 username: username,
                 password: password
             })
         });
         
-        console.log('📥 Response status:', response.status);
-        console.log('📥 Response headers:', [...response.headers.entries()]);
-        
         const data = await response.json();
-        console.log('📦 Response data:', data);
         
-        if (response.ok && data.success) {
-            // Simpan ke localStorage
+        if (data.success) {
+            // Simpan ke localStorage untuk info
             localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('isLoggedIn', 'true');
-            localStorage.setItem('username', data.user.username);
-            
-            console.log('✅ Login successful, redirecting...');
             
             // Tampilkan pesan sukses
             const form = document.getElementById('loginForm');
             const successMsg = createSuccessMessage('✅ ' + data.message + ' Redirecting ke dashboard...');
             form.parentNode.insertBefore(successMsg, form);
             
-            // Redirect ke index.html
+            // Redirect ke index.html setelah 1.5 detik
             setTimeout(() => {
                 window.location.href = 'index.html';
-                window.location.replace('index.html'); // Force redirect
             }, 1500);
         } else {
-            console.log('❌ Login failed:', data.message);
             const errorDiv = document.getElementById('errorMessage');
-            errorDiv.innerHTML = '❌ ' + (data.message || 'Login gagal');
+            errorDiv.innerHTML = '❌ ' + data.message;
             errorDiv.style.display = 'block';
-            loginBtn.disabled = false;
-            loginBtn.textContent = 'Login →';
         }
     } catch (error) {
-        console.error('❌ Fetch error:', error);
+        console.error('Error:', error);
         const errorDiv = document.getElementById('errorMessage');
-        errorDiv.innerHTML = '❌ Terjadi kesalahan: ' + error.message;
+        errorDiv.innerHTML = '❌ Terjadi kesalahan, pastikan server backend berjalan!';
         errorDiv.style.display = 'block';
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Login →';
-    }
-});
-
-// Cek jika sudah login, redirect ke dashboard
-window.addEventListener('load', async () => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    if (isLoggedIn) {
-        console.log('⚠️ User already logged in, redirecting to dashboard...');
-        window.location.href = 'index.html';
-        return;
-    }
-    
-    // Cek session di server
-    try {
-        const response = await fetch(`${API_URL}/me`, {
-            credentials: 'include'
-        });
-        const data = await response.json();
-        if (data.isLoggedIn) {
-            localStorage.setItem('user', JSON.stringify(data.user));
-            localStorage.setItem('isLoggedIn', 'true');
-            window.location.href = 'index.html';
-        }
-    } catch (error) {
-        console.log('ℹ️ Not logged in');
     }
 });
