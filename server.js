@@ -270,7 +270,235 @@ app.post('/api/logout', (req, res) => {
     });
 });
 
-// ... (sisa kode sama seperti sebelumnya)
+// ========== LOGOUT ==========
+app.post('/api/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({ success: false, message: 'Logout gagal' });
+        }
+        res.json({ success: true, message: 'Logout berhasil' });
+    });
+});
+
+app.post('/api/admin/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({ success: false, message: 'Logout gagal' });
+        }
+        res.json({ success: true, message: 'Admin logout berhasil' });
+    });
+});
+
+// ========== GET ALL PRODUCTS ==========
+app.get('/api/products', (req, res) => {
+    const query = `SELECT * FROM products WHERE is_active = 1 ORDER BY id DESC`;
+    
+    db.query(query, (err, results) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, products: results });
+    });
+});
+
+// ========== CREATE ORDER ==========
+app.post('/api/orders', (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ success: false, message: 'Harap login terlebih dahulu' });
+    }
+    
+    const { product_id, quantity, notes, total_price, customer_name, customer_phone, customer_address } = req.body;
+    const user_id = req.session.userId;
+    
+    const query = `INSERT INTO orders (user_id, product_id, quantity, notes, total_price, customer_name, customer_phone, customer_address, status) 
+                   VALUES (${user_id}, ${product_id}, ${quantity}, '${escape(notes)}', ${total_price}, '${escape(customer_name)}', '${escape(customer_phone)}', '${escape(customer_address)}', 'pending')`;
+    
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, orderId: result.insertId, message: 'Order berhasil dibuat!' });
+    });
+});
+
+// ========== GET ORDERS BY USER ==========
+app.get('/api/orders/user/:userId', (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ success: false, message: 'Harap login terlebih dahulu' });
+    }
+    
+    const requestedUserId = parseInt(req.params.userId);
+    if (req.session.userId !== requestedUserId && req.session.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Anda tidak memiliki akses ke order ini' });
+    }
+    
+    const query = `SELECT o.*, p.name as product_name, p.price as product_price, p.image_url 
+                   FROM orders o 
+                   JOIN products p ON o.product_id = p.id 
+                   WHERE o.user_id = ${requestedUserId} 
+                   ORDER BY o.id DESC`;
+    
+    db.query(query, (err, results) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, orders: results });
+    });
+});
+
+// ========== ADMIN MIDDLEWARE ==========
+const isAdmin = (req, res, next) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized - Login required' });
+    }
+    
+    if (req.session.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Forbidden - Admin access required' });
+    }
+    
+    next();
+};
+
+// ========== ADMIN GET ALL PRODUCTS ==========
+app.get('/api/admin/products', isAdmin, (req, res) => {
+    const query = `SELECT * FROM products ORDER BY id DESC`;
+    
+    db.query(query, (err, results) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, products: results });
+    });
+});
+
+// ========== ADMIN CREATE PRODUCT ==========
+app.post('/api/admin/products', isAdmin, (req, res) => {
+    const { name, price, description, image_url } = req.body;
+    
+    const query = `INSERT INTO products (name, price, description, image_url, is_active) 
+                   VALUES ('${escape(name)}', ${price}, '${escape(description)}', '${escape(image_url)}', 1)`;
+    
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, productId: result.insertId, message: 'Produk berhasil ditambahkan!' });
+    });
+});
+
+// ========== ADMIN UPDATE PRODUCT ==========
+app.put('/api/admin/products/:id', isAdmin, (req, res) => {
+    const productId = req.params.id;
+    const { name, price, description, image_url } = req.body;
+    
+    const query = `UPDATE products SET 
+                   name = '${escape(name)}', 
+                   price = ${price}, 
+                   description = '${escape(description)}', 
+                   image_url = '${escape(image_url)}' 
+                   WHERE id = ${productId}`;
+    
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, message: 'Produk berhasil diupdate!' });
+    });
+});
+
+// ========== ADMIN DELETE PRODUCT ==========
+app.delete('/api/admin/products/:id', isAdmin, (req, res) => {
+    const productId = req.params.id;
+    
+    const query = `DELETE FROM products WHERE id = ${productId}`;
+    
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Produk tidak ditemukan' });
+        }
+        
+        res.json({ success: true, message: 'Produk berhasil dihapus permanen!' });
+    });
+});
+
+// ========== ADMIN GET ALL ORDERS ==========
+app.get('/api/admin/orders', isAdmin, (req, res) => {
+    const query = `SELECT o.*, p.name as product_name, u.fullname as customer_name, u.username 
+                   FROM orders o 
+                   JOIN products p ON o.product_id = p.id 
+                   JOIN users u ON o.user_id = u.id 
+                   ORDER BY o.id DESC`;
+    
+    db.query(query, (err, results) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, orders: results });
+    });
+});
+
+// ========== ADMIN UPDATE ORDER STATUS ==========
+app.put('/api/admin/orders/:id/status', isAdmin, (req, res) => {
+    const orderId = req.params.id;
+    const { status } = req.body;
+    
+    const query = `UPDATE orders SET status = '${escape(status)}' WHERE id = ${orderId}`;
+    
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+        res.json({ success: true, message: 'Status order berhasil diupdate!' });
+    });
+});
+
+// ========== ADMIN GET STATS ==========
+app.get('/api/admin/stats', isAdmin, (req, res) => {
+    const productQuery = `SELECT COUNT(*) as total FROM products WHERE is_active = 1`;
+    
+    db.query(productQuery, (err, productResult) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.message });
+        }
+        
+        const orderQuery = `SELECT COUNT(*) as total FROM orders`;
+        
+        db.query(orderQuery, (err, orderResult) => {
+            if (err) {
+                return res.status(500).json({ success: false, error: err.message });
+            }
+            
+            const pendingQuery = `SELECT COUNT(*) as total FROM orders WHERE status = 'pending'`;
+            
+            db.query(pendingQuery, (err, pendingResult) => {
+                if (err) {
+                    return res.status(500).json({ success: false, error: err.message });
+                }
+                
+                const revenueQuery = `SELECT SUM(total_price) as total FROM orders WHERE status = 'selesai'`;
+                
+                db.query(revenueQuery, (err, revenueResult) => {
+                    if (err) {
+                        return res.status(500).json({ success: false, error: err.message });
+                    }
+                    
+                    const stats = {
+                        totalProducts: productResult[0].total || 0,
+                        totalOrders: orderResult[0].total || 0,
+                        pendingOrders: pendingResult[0].total || 0,
+                        totalRevenue: revenueResult[0].total || 0
+                    };
+                    
+                    res.json({ success: true, stats: stats });
+                });
+            });
+        });
+    });
+});
 
 const PORT = process.env.PORT || 8080;
 
