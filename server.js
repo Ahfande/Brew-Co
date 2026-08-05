@@ -2,34 +2,25 @@ const express = require('express');
 const mysql = require('mysql2');
 const session = require('express-session');
 const cors = require('cors');
+const MySQLStore = require('express-mysql-session')(session);
 
 const app = express();
 
 // ========== CORS ==========
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:8080',
+        'https://brew-co-production.up.railway.app'
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
 }));
 
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// ========== SESSION (SATU UNTUK SEMUA) ==========
-app.use(session({
-    name: 'coffeeShopSession',  // Satu nama cookie
-    secret: 'coffeeShopSecretKey2024!',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        httpOnly: true,
-        secure: false,  // false untuk localhost
-        maxAge: 24 * 60 * 60 * 1000, // 24 jam
-        sameSite: 'lax'
-    }
-}));
 
 // ========== DATABASE CONNECTION ==========
 console.log('🔍 Connecting to database...');
@@ -44,7 +35,10 @@ if (process.env.MYSQL_URL) {
             user: parsed.username,
             password: parsed.password,
             database: parsed.pathname.slice(1),
-            port: parsed.port || 3306
+            port: parsed.port || 3306,
+            ssl: {
+                rejectUnauthorized: false
+            }
         };
         console.log('✅ Using MYSQL_URL from Railway');
         console.log('   Host:', dbConfig.host);
@@ -64,18 +58,47 @@ if (process.env.MYSQL_URL) {
     console.log('✅ Using individual DB variables');
 }
 
-// Buat koneksi dengan mysql2
-const db = mysql.createConnection({
+// Buat connection pool
+const pool = mysql.createPool({
     ...dbConfig,
-    connectTimeout: 10000,
-    // Tambahkan ini untuk mengatasi masalah auth
-    authPlugins: {
-        mysql_clear_password: () => () => Buffer.from(dbConfig.password + '\0')
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+// ========== SESSION STORE ==========
+const sessionStore = new MySQLStore({
+    pool: pool,
+    tableName: 'sessions',
+    createDatabaseTable: true,
+    schema: {
+        tableName: 'sessions',
+        columnNames: {
+            session_id: 'session_id',
+            expires: 'expires',
+            data: 'data'
+        }
     }
 });
 
-// Koneksi ke database
-db.connect((err) => {
+// ========== SESSION (SATU UNTUK SEMUA) ==========
+app.use(session({
+    name: 'coffeeShopSession',
+    secret: process.env.SESSION_SECRET || 'coffeeShopSecretKey2024!',
+    resave: false,
+    saveUninitialized: false,
+    store: sessionStore,
+    cookie: { 
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax',
+        domain: process.env.NODE_ENV === 'production' ? '.railway.app' : undefined
+    }
+}));
+
+// Test koneksi database
+pool.getConnection((err, connection) => {
     if (err) {
         console.error('❌ Database connection error:');
         console.error('   Code:', err.code);
@@ -89,22 +112,7 @@ db.connect((err) => {
         return;
     }
     console.log('✅ Database connected successfully!');
-});
-
-// Handle database errors
-db.on('error', (err) => {
-    console.error('Database error:', err);
-    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        console.log('⚠️ Database connection lost.');
-    }
-});
-
-db.connect((err) => {
-    if (err) {
-        console.error('Database error:', err);
-        return;
-    }
-    console.log('✅ Database connected');
+    connection.release();
 });
 
 // Escape function (temporary, nanti ganti ke parameterized query)
@@ -119,7 +127,7 @@ app.post('/api/register', (req, res) => {
     
     const checkQuery = `SELECT * FROM users WHERE username = '${escape(username)}'`;
     
-    db.query(checkQuery, (err, result) => {
+    pool.query(checkQuery, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, message: 'Error database' });
         }
@@ -131,7 +139,7 @@ app.post('/api/register', (req, res) => {
         const insertQuery = `INSERT INTO users (fullname, username, password, role) 
                              VALUES ('${escape(fullname)}', '${escape(username)}', '${escape(password)}', 'user')`;
         
-        db.query(insertQuery, (err) => {
+        pool.query(insertQuery, (err) => {
             if (err) {
                 return res.status(500).json({ success: false, message: 'Gagal register' });
             }
@@ -145,10 +153,13 @@ app.post('/api/register', (req, res) => {
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     
+    console.log('🔐 Login attempt:', username);
+    
     const query = `SELECT * FROM users WHERE username = '${escape(username)}' AND password = '${escape(password)}'`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
+            console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Error database' });
         }
         
@@ -159,25 +170,37 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ success: false, message: 'Akun admin! Silakan login melalui halaman admin.' });
             }
             
-            req.session.userId = user.id;
-            req.session.username = user.username;
-            req.session.fullname = user.fullname;
-            req.session.role = user.role;
-            
-            req.session.save((err) => {
+            // Regenerate session untuk keamanan
+            req.session.regenerate((err) => {
                 if (err) {
+                    console.error('Session regenerate error:', err);
                     return res.status(500).json({ success: false, message: 'Session error' });
                 }
                 
-                res.json({ 
-                    success: true, 
-                    message: 'Login berhasil!',
-                    user: {
-                        id: user.id,
-                        username: user.username,
-                        fullname: user.fullname,
-                        role: user.role
+                req.session.userId = user.id;
+                req.session.username = user.username;
+                req.session.fullname = user.fullname;
+                req.session.role = user.role;
+                
+                req.session.save((err) => {
+                    if (err) {
+                        console.error('Session save error:', err);
+                        return res.status(500).json({ success: false, message: 'Session save error' });
                     }
+                    
+                    console.log('✅ Session saved for user:', user.username);
+                    console.log('   Session ID:', req.sessionID);
+                    
+                    res.json({ 
+                        success: true, 
+                        message: 'Login berhasil!',
+                        user: {
+                            id: user.id,
+                            username: user.username,
+                            fullname: user.fullname,
+                            role: user.role
+                        }
+                    });
                 });
             });
         } else {
@@ -194,7 +217,7 @@ app.post('/api/admin/login', (req, res) => {
     
     const query = `SELECT * FROM users WHERE username = '${escape(username)}' AND password = '${escape(password)}' AND role = 'admin'`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Error database' });
@@ -247,14 +270,14 @@ app.post('/api/admin/login', (req, res) => {
 // ========== CEK SESSION ==========
 app.get('/api/me', (req, res) => {
     console.log('\n=== CHECK SESSION ===');
-    console.log('Cookie received:', req.headers.cookie);
-    console.log('Session ID:', req.session?.id);
+    console.log('Session ID:', req.sessionID);
     console.log('Session userId:', req.session?.userId);
     console.log('Session role:', req.session?.role);
     console.log('Full session:', req.session);
+    console.log('Cookies:', req.headers.cookie);
     
     if (req.session && req.session.userId) {
-        console.log('✅ User is logged in');
+        console.log('✅ User is logged in as:', req.session.username);
         res.json({
             isLoggedIn: true,
             user: {
@@ -294,7 +317,7 @@ app.post('/api/admin/logout', (req, res) => {
 app.get('/api/products', (req, res) => {
     const query = `SELECT * FROM products WHERE is_active = 1 ORDER BY id DESC`;
     
-    db.query(query, (err, results) => {
+    pool.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -314,7 +337,7 @@ app.post('/api/orders', (req, res) => {
     const query = `INSERT INTO orders (user_id, product_id, quantity, notes, total_price, customer_name, customer_phone, customer_address, status) 
                    VALUES (${user_id}, ${product_id}, ${quantity}, '${escape(notes)}', ${total_price}, '${escape(customer_name)}', '${escape(customer_phone)}', '${escape(customer_address)}', 'pending')`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -339,7 +362,7 @@ app.get('/api/orders/user/:userId', (req, res) => {
                    WHERE o.user_id = ${requestedUserId} 
                    ORDER BY o.id DESC`;
     
-    db.query(query, (err, results) => {
+    pool.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -364,7 +387,7 @@ const isAdmin = (req, res, next) => {
 app.get('/api/admin/products', isAdmin, (req, res) => {
     const query = `SELECT * FROM products ORDER BY id DESC`;
     
-    db.query(query, (err, results) => {
+    pool.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -379,7 +402,7 @@ app.post('/api/admin/products', isAdmin, (req, res) => {
     const query = `INSERT INTO products (name, price, description, image_url, is_active) 
                    VALUES ('${escape(name)}', ${price}, '${escape(description)}', '${escape(image_url)}', 1)`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -399,7 +422,7 @@ app.put('/api/admin/products/:id', isAdmin, (req, res) => {
                    image_url = '${escape(image_url)}' 
                    WHERE id = ${productId}`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -413,7 +436,7 @@ app.delete('/api/admin/products/:id', isAdmin, (req, res) => {
     
     const query = `DELETE FROM products WHERE id = ${productId}`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -434,7 +457,7 @@ app.get('/api/admin/orders', isAdmin, (req, res) => {
                    JOIN users u ON o.user_id = u.id 
                    ORDER BY o.id DESC`;
     
-    db.query(query, (err, results) => {
+    pool.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -449,7 +472,7 @@ app.put('/api/admin/orders/:id/status', isAdmin, (req, res) => {
     
     const query = `UPDATE orders SET status = '${escape(status)}' WHERE id = ${orderId}`;
     
-    db.query(query, (err, result) => {
+    pool.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -461,28 +484,28 @@ app.put('/api/admin/orders/:id/status', isAdmin, (req, res) => {
 app.get('/api/admin/stats', isAdmin, (req, res) => {
     const productQuery = `SELECT COUNT(*) as total FROM products WHERE is_active = 1`;
     
-    db.query(productQuery, (err, productResult) => {
+    pool.query(productQuery, (err, productResult) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.message });
         }
         
         const orderQuery = `SELECT COUNT(*) as total FROM orders`;
         
-        db.query(orderQuery, (err, orderResult) => {
+        pool.query(orderQuery, (err, orderResult) => {
             if (err) {
                 return res.status(500).json({ success: false, error: err.message });
             }
             
             const pendingQuery = `SELECT COUNT(*) as total FROM orders WHERE status = 'pending'`;
             
-            db.query(pendingQuery, (err, pendingResult) => {
+            pool.query(pendingQuery, (err, pendingResult) => {
                 if (err) {
                     return res.status(500).json({ success: false, error: err.message });
                 }
                 
                 const revenueQuery = `SELECT SUM(total_price) as total FROM orders WHERE status = 'selesai'`;
                 
-                db.query(revenueQuery, (err, revenueResult) => {
+                pool.query(revenueQuery, (err, revenueResult) => {
                     if (err) {
                         return res.status(500).json({ success: false, error: err.message });
                     }
@@ -501,8 +524,19 @@ app.get('/api/admin/stats', isAdmin, (req, res) => {
     });
 });
 
+// ========== TEST ENDPOINT (untuk debugging) ==========
+app.get('/api/test-session', (req, res) => {
+    res.json({
+        sessionID: req.sessionID,
+        session: req.session,
+        cookies: req.headers.cookie,
+        isProduction: process.env.NODE_ENV === 'production'
+    });
+});
+
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
