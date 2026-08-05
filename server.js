@@ -2,7 +2,6 @@ const express = require('express');
 const mysql = require('mysql2');
 const session = require('express-session');
 const cors = require('cors');
-const MySQLStore = require('express-mysql-session')(session); // TAMBAHKAN INI
 
 const app = express();
 
@@ -20,6 +19,20 @@ app.use(cors({
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ========== SESSION ==========
+app.use(session({
+    name: 'coffeeShopSession',
+    secret: process.env.SESSION_SECRET || 'coffeeShopSecretKey2024!',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { 
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
+    }
+}));
 
 // ========== DATABASE CONNECTION ==========
 console.log('🔍 Connecting to database...');
@@ -54,49 +67,7 @@ if (process.env.MYSQL_URL) {
     console.log('✅ Using individual DB variables');
 }
 
-// Buat connection pool untuk session store
-const pool = mysql.createPool({
-    ...dbConfig,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    ssl: process.env.NODE_ENV === 'production' ? {
-        rejectUnauthorized: false
-    } : undefined
-});
-
-// ========== SESSION STORE ==========
-const sessionStore = new MySQLStore({
-    pool: pool,
-    tableName: 'sessions',
-    createDatabaseTable: true,
-    schema: {
-        tableName: 'sessions',
-        columnNames: {
-            session_id: 'session_id',
-            expires: 'expires',
-            data: 'data'
-        }
-    }
-});
-
-// ========== SESSION ==========
-app.use(session({
-    name: 'coffeeShopSession',
-    secret: process.env.SESSION_SECRET || 'coffeeShopSecretKey2024!',
-    resave: false,
-    saveUninitialized: false,
-    store: sessionStore, // TAMBAHKAN INI
-    cookie: { 
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.railway.app' : undefined
-    }
-}));
-
-// ========== DATABASE CONNECTION (untuk query) ==========
+// Buat koneksi dengan mysql2
 const db = mysql.createConnection({
     ...dbConfig,
     connectTimeout: 10000,
@@ -111,6 +82,11 @@ db.connect((err) => {
         console.error('❌ Database connection error:');
         console.error('   Code:', err.code);
         console.error('   Message:', err.message);
+        console.error('\n   Please check:');
+        console.error('   1. Host:', dbConfig.host);
+        console.error('   2. Database:', dbConfig.database);
+        console.error('   3. Username:', dbConfig.user);
+        console.error('   4. Port:', dbConfig.port);
         return;
     }
     console.log('✅ Database connected successfully!');
@@ -179,38 +155,29 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ success: false, message: 'Akun admin! Silakan login melalui halaman admin.' });
             }
             
-            // Regenerate session untuk keamanan
-            req.session.regenerate((err) => {
+            req.session.userId = user.id;
+            req.session.username = user.username;
+            req.session.fullname = user.fullname;
+            req.session.role = user.role;
+            
+            req.session.save((err) => {
                 if (err) {
-                    console.error('Session regenerate error:', err);
+                    console.error('Session save error:', err);
                     return res.status(500).json({ success: false, message: 'Session error' });
                 }
                 
-                req.session.userId = user.id;
-                req.session.username = user.username;
-                req.session.fullname = user.fullname;
-                req.session.role = user.role;
+                console.log('✅ Session saved for user:', user.username);
+                console.log('   Session ID:', req.sessionID);
                 
-                req.session.save((err) => {
-                    if (err) {
-                        console.error('Session save error:', err);
-                        return res.status(500).json({ success: false, message: 'Session save error' });
+                res.json({ 
+                    success: true, 
+                    message: 'Login berhasil!',
+                    user: {
+                        id: user.id,
+                        username: user.username,
+                        fullname: user.fullname,
+                        role: user.role
                     }
-                    
-                    console.log('✅ Session saved for user:', user.username);
-                    console.log('   Session ID:', req.sessionID);
-                    console.log('   Session data:', req.session);
-                    
-                    res.json({ 
-                        success: true, 
-                        message: 'Login berhasil!',
-                        user: {
-                            id: user.id,
-                            username: user.username,
-                            fullname: user.fullname,
-                            role: user.role
-                        }
-                    });
                 });
             });
         } else {
@@ -280,15 +247,13 @@ app.post('/api/admin/login', (req, res) => {
 app.get('/api/me', (req, res) => {
     console.log('\n=== CHECK SESSION ===');
     console.log('Cookie received:', req.headers.cookie);
-    console.log('Session ID:', req.sessionID);
-    console.log('Session exists:', !!req.session);
+    console.log('Session ID:', req.session?.id);
     console.log('Session userId:', req.session?.userId);
-    console.log('Session username:', req.session?.username);
     console.log('Session role:', req.session?.role);
     console.log('Full session:', req.session);
     
     if (req.session && req.session.userId) {
-        console.log('✅ User is logged in as:', req.session.username);
+        console.log('✅ User is logged in');
         res.json({
             isLoggedIn: true,
             user: {
