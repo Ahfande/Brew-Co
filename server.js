@@ -2,7 +2,6 @@ const express = require('express');
 const mysql = require('mysql2');
 const session = require('express-session');
 const cors = require('cors');
-const MySQLStore = require('express-mysql-session')(session);
 
 const app = express();
 
@@ -10,8 +9,7 @@ const app = express();
 app.use(cors({
     origin: [
         'http://localhost:3000',
-        'http://localhost:8080',
-        'https://brew-co-production.up.railway.app'
+        'https://brew-co-production.up.railway.app',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -21,6 +19,20 @@ app.use(cors({
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ========== SESSION ==========
+app.use(session({
+    name: 'coffeeShopSession',
+    secret: process.env.SESSION_SECRET || 'coffeeShopSecretKey2024!',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { 
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
+    }
+}));
 
 // ========== DATABASE CONNECTION ==========
 console.log('🔍 Connecting to database...');
@@ -35,10 +47,7 @@ if (process.env.MYSQL_URL) {
             user: parsed.username,
             password: parsed.password,
             database: parsed.pathname.slice(1),
-            port: parsed.port || 3306,
-            ssl: {
-                rejectUnauthorized: false
-            }
+            port: parsed.port || 3306
         };
         console.log('✅ Using MYSQL_URL from Railway');
         console.log('   Host:', dbConfig.host);
@@ -58,55 +67,37 @@ if (process.env.MYSQL_URL) {
     console.log('✅ Using individual DB variables');
 }
 
-// Buat connection pool
-const pool = mysql.createPool({
+// Buat koneksi dengan mysql2
+const db = mysql.createConnection({
     ...dbConfig,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    connectTimeout: 10000,
+    ssl: process.env.NODE_ENV === 'production' ? {
+        rejectUnauthorized: false
+    } : undefined
 });
 
-// ========== SESSION STORE ==========
-const sessionStore = new MySQLStore({
-    pool: pool,
-    tableName: 'sessions',
-    createDatabaseTable: true,
-    schema: {
-        tableName: 'sessions',
-        columnNames: {
-            session_id: 'session_id',
-            expires: 'expires',
-            data: 'data'
-        }
-    }
-});
-
-// ========== SESSION ==========
-app.use(session({
-    name: 'coffeeShopSession',
-    secret: process.env.SESSION_SECRET || 'coffeeShopSecretKey2024!',
-    resave: false,
-    saveUninitialized: false,
-    store: sessionStore,
-    cookie: { 
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax'
-    }
-}));
-
-// Test koneksi database
-pool.getConnection((err, connection) => {
+// Koneksi ke database
+db.connect((err) => {
     if (err) {
         console.error('❌ Database connection error:');
         console.error('   Code:', err.code);
         console.error('   Message:', err.message);
-        console.error('\n   Please check your MYSQL_URL environment variable');
+        console.error('\n   Please check:');
+        console.error('   1. Host:', dbConfig.host);
+        console.error('   2. Database:', dbConfig.database);
+        console.error('   3. Username:', dbConfig.user);
+        console.error('   4. Port:', dbConfig.port);
         return;
     }
     console.log('✅ Database connected successfully!');
-    connection.release();
+});
+
+// Handle database errors
+db.on('error', (err) => {
+    console.error('Database error:', err);
+    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+        console.log('⚠️ Database connection lost.');
+    }
 });
 
 // Escape function
@@ -121,7 +112,7 @@ app.post('/api/register', (req, res) => {
     
     const checkQuery = `SELECT * FROM users WHERE username = '${escape(username)}'`;
     
-    pool.query(checkQuery, (err, result) => {
+    db.query(checkQuery, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, message: 'Error database' });
         }
@@ -133,7 +124,7 @@ app.post('/api/register', (req, res) => {
         const insertQuery = `INSERT INTO users (fullname, username, password, role) 
                              VALUES ('${escape(fullname)}', '${escape(username)}', '${escape(password)}', 'user')`;
         
-        pool.query(insertQuery, (err) => {
+        db.query(insertQuery, (err) => {
             if (err) {
                 return res.status(500).json({ success: false, message: 'Gagal register' });
             }
@@ -151,7 +142,7 @@ app.post('/api/login', (req, res) => {
     
     const query = `SELECT * FROM users WHERE username = '${escape(username)}' AND password = '${escape(password)}'`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Error database' });
@@ -164,36 +155,29 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ success: false, message: 'Akun admin! Silakan login melalui halaman admin.' });
             }
             
-            req.session.regenerate((err) => {
+            req.session.userId = user.id;
+            req.session.username = user.username;
+            req.session.fullname = user.fullname;
+            req.session.role = user.role;
+            
+            req.session.save((err) => {
                 if (err) {
-                    console.error('Session regenerate error:', err);
+                    console.error('Session save error:', err);
                     return res.status(500).json({ success: false, message: 'Session error' });
                 }
                 
-                req.session.userId = user.id;
-                req.session.username = user.username;
-                req.session.fullname = user.fullname;
-                req.session.role = user.role;
+                console.log('✅ Session saved for user:', user.username);
+                console.log('   Session ID:', req.sessionID);
                 
-                req.session.save((err) => {
-                    if (err) {
-                        console.error('Session save error:', err);
-                        return res.status(500).json({ success: false, message: 'Session save error' });
+                res.json({ 
+                    success: true, 
+                    message: 'Login berhasil!',
+                    user: {
+                        id: user.id,
+                        username: user.username,
+                        fullname: user.fullname,
+                        role: user.role
                     }
-                    
-                    console.log('✅ Session saved for user:', user.username);
-                    console.log('   Session ID:', req.sessionID);
-                    
-                    res.json({ 
-                        success: true, 
-                        message: 'Login berhasil!',
-                        user: {
-                            id: user.id,
-                            username: user.username,
-                            fullname: user.fullname,
-                            role: user.role
-                        }
-                    });
                 });
             });
         } else {
@@ -210,7 +194,7 @@ app.post('/api/admin/login', (req, res) => {
     
     const query = `SELECT * FROM users WHERE username = '${escape(username)}' AND password = '${escape(password)}' AND role = 'admin'`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Error database' });
@@ -262,14 +246,14 @@ app.post('/api/admin/login', (req, res) => {
 // ========== CEK SESSION ==========
 app.get('/api/me', (req, res) => {
     console.log('\n=== CHECK SESSION ===');
-    console.log('Session ID:', req.sessionID);
+    console.log('Cookie received:', req.headers.cookie);
+    console.log('Session ID:', req.session?.id);
     console.log('Session userId:', req.session?.userId);
     console.log('Session role:', req.session?.role);
     console.log('Full session:', req.session);
-    console.log('Cookies:', req.headers.cookie);
     
     if (req.session && req.session.userId) {
-        console.log('✅ User is logged in as:', req.session.username);
+        console.log('✅ User is logged in');
         res.json({
             isLoggedIn: true,
             user: {
@@ -309,7 +293,7 @@ app.post('/api/admin/logout', (req, res) => {
 app.get('/api/products', (req, res) => {
     const query = `SELECT * FROM products WHERE is_active = 1 ORDER BY id DESC`;
     
-    pool.query(query, (err, results) => {
+    db.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -329,7 +313,7 @@ app.post('/api/orders', (req, res) => {
     const query = `INSERT INTO orders (user_id, product_id, quantity, notes, total_price, customer_name, customer_phone, customer_address, status) 
                    VALUES (${user_id}, ${product_id}, ${quantity}, '${escape(notes)}', ${total_price}, '${escape(customer_name)}', '${escape(customer_phone)}', '${escape(customer_address)}', 'pending')`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -354,7 +338,7 @@ app.get('/api/orders/user/:userId', (req, res) => {
                    WHERE o.user_id = ${requestedUserId} 
                    ORDER BY o.id DESC`;
     
-    pool.query(query, (err, results) => {
+    db.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -379,7 +363,7 @@ const isAdmin = (req, res, next) => {
 app.get('/api/admin/products', isAdmin, (req, res) => {
     const query = `SELECT * FROM products ORDER BY id DESC`;
     
-    pool.query(query, (err, results) => {
+    db.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -394,7 +378,7 @@ app.post('/api/admin/products', isAdmin, (req, res) => {
     const query = `INSERT INTO products (name, price, description, image_url, is_active) 
                    VALUES ('${escape(name)}', ${price}, '${escape(description)}', '${escape(image_url)}', 1)`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -414,7 +398,7 @@ app.put('/api/admin/products/:id', isAdmin, (req, res) => {
                    image_url = '${escape(image_url)}' 
                    WHERE id = ${productId}`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -428,7 +412,7 @@ app.delete('/api/admin/products/:id', isAdmin, (req, res) => {
     
     const query = `DELETE FROM products WHERE id = ${productId}`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -449,7 +433,7 @@ app.get('/api/admin/orders', isAdmin, (req, res) => {
                    JOIN users u ON o.user_id = u.id 
                    ORDER BY o.id DESC`;
     
-    pool.query(query, (err, results) => {
+    db.query(query, (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -464,7 +448,7 @@ app.put('/api/admin/orders/:id/status', isAdmin, (req, res) => {
     
     const query = `UPDATE orders SET status = '${escape(status)}' WHERE id = ${orderId}`;
     
-    pool.query(query, (err, result) => {
+    db.query(query, (err, result) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.sqlMessage });
         }
@@ -476,28 +460,28 @@ app.put('/api/admin/orders/:id/status', isAdmin, (req, res) => {
 app.get('/api/admin/stats', isAdmin, (req, res) => {
     const productQuery = `SELECT COUNT(*) as total FROM products WHERE is_active = 1`;
     
-    pool.query(productQuery, (err, productResult) => {
+    db.query(productQuery, (err, productResult) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.message });
         }
         
         const orderQuery = `SELECT COUNT(*) as total FROM orders`;
         
-        pool.query(orderQuery, (err, orderResult) => {
+        db.query(orderQuery, (err, orderResult) => {
             if (err) {
                 return res.status(500).json({ success: false, error: err.message });
             }
             
             const pendingQuery = `SELECT COUNT(*) as total FROM orders WHERE status = 'pending'`;
             
-            pool.query(pendingQuery, (err, pendingResult) => {
+            db.query(pendingQuery, (err, pendingResult) => {
                 if (err) {
                     return res.status(500).json({ success: false, error: err.message });
                 }
                 
                 const revenueQuery = `SELECT SUM(total_price) as total FROM orders WHERE status = 'selesai'`;
                 
-                pool.query(revenueQuery, (err, revenueResult) => {
+                db.query(revenueQuery, (err, revenueResult) => {
                     if (err) {
                         return res.status(500).json({ success: false, error: err.message });
                     }
@@ -531,5 +515,4 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔗 URL: https://brew-co-production.up.railway.app`);
 });
