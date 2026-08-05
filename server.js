@@ -81,7 +81,7 @@ const sessionStore = new MySQLStore({
     }
 });
 
-// ========== SESSION (SATU UNTUK SEMUA) ==========
+// ========== SESSION ==========
 app.use(session({
     name: 'coffeeShopSession',
     secret: process.env.SESSION_SECRET || 'coffeeShopSecretKey2024!',
@@ -92,8 +92,7 @@ app.use(session({
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.railway.app' : undefined
+        sameSite: 'lax'
     }
 }));
 
@@ -103,19 +102,14 @@ pool.getConnection((err, connection) => {
         console.error('❌ Database connection error:');
         console.error('   Code:', err.code);
         console.error('   Message:', err.message);
-        console.error('\n   Please check:');
-        console.error('   1. Host:', dbConfig.host);
-        console.error('   2. Database:', dbConfig.database);
-        console.error('   3. Username:', dbConfig.user);
-        console.error('   4. Password: [HIDDEN]');
-        console.error('   5. Port:', dbConfig.port);
+        console.error('\n   Please check your MYSQL_URL environment variable');
         return;
     }
     console.log('✅ Database connected successfully!');
     connection.release();
 });
 
-// Escape function (temporary, nanti ganti ke parameterized query)
+// Escape function
 const escape = (str) => {
     if (!str) return '';
     return str.replace(/'/g, "\\'");
@@ -170,7 +164,6 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ success: false, message: 'Akun admin! Silakan login melalui halaman admin.' });
             }
             
-            // Regenerate session untuk keamanan
             req.session.regenerate((err) => {
                 if (err) {
                     console.error('Session regenerate error:', err);
@@ -228,7 +221,6 @@ app.post('/api/admin/login', (req, res) => {
         if (result.length > 0) {
             const user = result[0];
             
-            // Regenerate session untuk menghindari session fixation
             req.session.regenerate((err) => {
                 if (err) {
                     return res.status(500).json({ success: false, message: 'Session error' });
@@ -524,7 +516,7 @@ app.get('/api/admin/stats', isAdmin, (req, res) => {
     });
 });
 
-// ========== TEST ENDPOINT (untuk debugging) ==========
+// ========== TEST ENDPOINT ==========
 app.get('/api/test-session', (req, res) => {
     res.json({
         sessionID: req.sessionID,
@@ -539,4 +531,5 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 URL: https://brew-co-production.up.railway.app`);
 });
