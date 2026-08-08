@@ -5,6 +5,10 @@ const cors = require('cors');
 
 const app = express();
 
+// Railway (dan hosting lain yang pakai reverse proxy) butuh ini
+// supaya Express tahu request aslinya HTTPS, sehingga cookie "secure" bisa terpasang
+app.set('trust proxy', 1);
+
 // ========== CORS ==========
 app.use(cors({
     origin: [
@@ -28,9 +32,16 @@ app.use(session({
     saveUninitialized: false,
     cookie: { 
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        // Railway selalu HTTPS, jadi secure:true aman dipakai terus.
+        // Kalau pakai process.env.NODE_ENV === 'production' dan env var itu lupa di-set,
+        // secure bisa jadi false padahal harus true saat sameSite:'none'.
+        secure: true,
         maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax'
+        // 'none' wajib kalau frontend (login.html/dashboard) diakses dari domain/origin
+        // yang beda dengan API (mis. dibuka via file://, localhost, atau hosting terpisah).
+        // 'lax' akan MENOLAK mengirim cookie ini pada request fetch() cross-site,
+        // makanya /api/me selalu balas isLoggedIn:false walau login sukses.
+        sameSite: 'none'
     }
 }));
 
