@@ -30,8 +30,7 @@ app.use(session({
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'none', // GANTI dari 'lax' ke 'none' untuk cross-site
-        domain: process.env.NODE_ENV === 'production' ? '.railway.app' : undefined
+        sameSite: 'lax'
     }
 }));
 
@@ -156,7 +155,6 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ success: false, message: 'Akun admin! Silakan login melalui halaman admin.' });
             }
             
-            // Set session
             req.session.userId = user.id;
             req.session.username = user.username;
             req.session.fullname = user.fullname;
@@ -170,7 +168,6 @@ app.post('/api/login', (req, res) => {
                 
                 console.log('✅ Session saved for user:', user.username);
                 console.log('   Session ID:', req.sessionID);
-                console.log('   Session data:', req.session);
                 
                 res.json({ 
                     success: true, 
@@ -208,27 +205,33 @@ app.post('/api/admin/login', (req, res) => {
         if (result.length > 0) {
             const user = result[0];
             
-            req.session.userId = user.id;
-            req.session.username = user.username;
-            req.session.fullname = user.fullname;
-            req.session.role = user.role;
-            
-            req.session.save((err) => {
+            req.session.regenerate((err) => {
                 if (err) {
-                    return res.status(500).json({ success: false, message: 'Session save error' });
+                    return res.status(500).json({ success: false, message: 'Session error' });
                 }
                 
-                console.log('Admin session saved:', req.session);
+                req.session.userId = user.id;
+                req.session.username = user.username;
+                req.session.fullname = user.fullname;
+                req.session.role = user.role;
                 
-                res.json({ 
-                    success: true, 
-                    message: 'Login admin berhasil!',
-                    user: {
-                        id: user.id,
-                        username: user.username,
-                        fullname: user.fullname,
-                        role: user.role
+                req.session.save((err) => {
+                    if (err) {
+                        return res.status(500).json({ success: false, message: 'Session save error' });
                     }
+                    
+                    console.log('Admin session saved:', req.session);
+                    
+                    res.json({ 
+                        success: true, 
+                        message: 'Login admin berhasil!',
+                        user: {
+                            id: user.id,
+                            username: user.username,
+                            fullname: user.fullname,
+                            role: user.role
+                        }
+                    });
                 });
             });
         } else {
@@ -250,7 +253,7 @@ app.get('/api/me', (req, res) => {
     console.log('Full session:', req.session);
     
     if (req.session && req.session.userId) {
-        console.log('✅ User is logged in as:', req.session.username);
+        console.log('✅ User is logged in');
         res.json({
             isLoggedIn: true,
             user: {
