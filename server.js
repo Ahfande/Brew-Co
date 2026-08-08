@@ -281,6 +281,34 @@ app.get('/api/me', (req, res) => {
     console.log('==================\n');
 });
 
+// ========== GET PROFILE BY ID (⚠️ SENGAJA RENTAN - A01:2021 IDOR) ==========
+// Endpoint ini cuma cek "sudah login atau belum", tapi TIDAK cek apakah
+// :id yang diminta adalah milik user yang login. Jadi user A yang login
+// bisa akses /api/profile/3, /api/profile/4, dst walau bukan miliknya.
+app.get('/api/profile/:id', (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ success: false, message: 'Harap login terlebih dahulu' });
+    }
+
+    const profileId = req.params.id;
+
+    // ⚠️ Sekalian rentan SQL Injection (A03:2021) karena pakai escape() manual
+    // yang cuma handle single quote, bukan parameterized query.
+    const query = `SELECT id, fullname, username, role FROM users WHERE id = '${escape(profileId)}'`;
+
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).json({ success: false, error: err.sqlMessage });
+        }
+
+        if (result.length === 0) {
+            return res.status(404).json({ success: false, message: 'User tidak ditemukan' });
+        }
+
+        res.json({ success: true, profile: result[0] });
+    });
+});
+
 // ========== LOGOUT ==========
 app.post('/api/logout', (req, res) => {
     req.session.destroy((err) => {
@@ -339,10 +367,10 @@ app.get('/api/orders/user/:userId', (req, res) => {
     }
     
     const requestedUserId = parseInt(req.params.userId);
-    if (req.session.userId !== requestedUserId && req.session.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Anda tidak memiliki akses ke order ini' });
-    }
-    
+    // ⚠️ SENGAJA RENTAN (A01:2021 - Broken Access Control / IDOR):
+    // tidak ada verifikasi req.session.userId === requestedUserId,
+    // jadi user yang login bisa lihat order milik user_id berapa pun.
+
     const query = `SELECT o.*, p.name as product_name, p.price as product_price, p.image_url 
                    FROM orders o 
                    JOIN products p ON o.product_id = p.id 
