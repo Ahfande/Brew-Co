@@ -13,6 +13,7 @@ app.set('trust proxy', 1);
 app.use(cors({
     origin: [
         'http://localhost:3000',
+        'https://brew-co-production.up.railway.app',
         'https://brew-co-production-f788.up.railway.app',
     ],
     credentials: true,
