@@ -1,5 +1,5 @@
 // login-admin.js
-const API_URL = 'https://brew-co-production.up.railway.app/api';
+const API_URL = 'https://brew-co-production-56dd.up.railway.app/api';
 
 // Buat elemen notifikasi sukses
 const createSuccessMessage = (message) => {
