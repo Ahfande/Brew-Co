@@ -1,5 +1,5 @@
 // dashboard-admin.js
-const API_URL = 'https://brew-co-production.up.railway.app/api';
+const API_URL = 'https://brew-co-production-56dd.up.railway.app/api';
 let currentAdmin = null;
 let products = [];
 let orders = [];
