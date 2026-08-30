@@ -11,14 +11,12 @@ app.set('trust proxy', 1);
 
 // ========== CORS ==========
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'https://brew-co-production.up.railway.app',
-        'https://brew-co-production-f788.up.railway.app',
-    ],
+    origin: process.env.NODE_ENV === 'production' 
+        ? 'https://brew-co-production-56dd.up.railway.app'  // URL Railway kamu
+        : 'http://localhost:3000',
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.static(__dirname));
