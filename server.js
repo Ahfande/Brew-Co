@@ -77,28 +77,17 @@ if (process.env.MYSQL_URL) {
     console.log('✅ Using individual DB variables');
 }
 
-// Buat CONNECTION POOL dengan mysql2 (bukan single connection)
-// Kenapa pool, bukan createConnection():
-// createConnection() cuma bikin 1 koneksi yang dibuat sekali saat server start.
-// Kalau koneksi itu idle lebih lama dari `wait_timeout` MySQL, server DB akan
-// menutup koneksinya sendiri, dan mysql2 TIDAK auto-reconnect -> semua query
-// berikutnya gagal dengan "Can't add new command when connection is in closed state"
-// sampai proses Node di-restart manual. Pool otomatis membuka koneksi baru
-// kapan pun dibutuhkan, jadi masalah ini tidak terjadi lagi.
-const db = mysql.createPool({
+// Buat koneksi dengan mysql2
+const db = mysql.createConnection({
     ...dbConfig,
     connectTimeout: 10000,
     ssl: process.env.NODE_ENV === 'production' ? {
         rejectUnauthorized: false
-    } : undefined,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    } : undefined
 });
 
-// Tes koneksi awal (pool tidak butuh .connect() eksplisit seperti single connection,
-// tapi kita tetap coba ambil 1 koneksi untuk memastikan kredensial/host benar)
-db.getConnection((err, connection) => {
+// Koneksi ke database
+db.connect((err) => {
     if (err) {
         console.error('❌ Database connection error:');
         console.error('   Code:', err.code);
@@ -111,14 +100,13 @@ db.getConnection((err, connection) => {
         return;
     }
     console.log('✅ Database connected successfully!');
-    connection.release();
 });
 
-// Handle error di level pool (mis. semua koneksi idle di pool ikut mati barengan)
+// Handle database errors
 db.on('error', (err) => {
-    console.error('Database pool error:', err);
+    console.error('Database error:', err);
     if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        console.log('⚠️ Database connection lost, pool akan membuka koneksi baru otomatis.');
+        console.log('⚠️ Database connection lost.');
     }
 });
 
@@ -547,16 +535,6 @@ app.get('/api/admin/stats', isAdmin, (req, res) => {
                 });
             });
         });
-    });
-});
-
-// ========== DEBUG: CEK STATUS KONEKSI DATABASE ==========
-app.get('/api/debug-db', (req, res) => {
-    db.query('SELECT 1 AS ok', (err, result) => {
-        if (err) {
-            return res.status(500).json({ connected: false, code: err.code, message: err.message });
-        }
-        res.json({ connected: true, result });
     });
 });
 
