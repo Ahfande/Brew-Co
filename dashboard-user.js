@@ -1,4 +1,4 @@
-const API_URL = 'https://brew-co-production-56dd.up.railway.app/api';
+const API_URL = 'https://brew-co-production-d2fe.up.railway.app/api';
 let currentUser = null;
 let products = [];
 
