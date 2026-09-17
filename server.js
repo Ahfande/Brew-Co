@@ -13,7 +13,7 @@ app.set('trust proxy', 1);
 // ========== CORS ==========
 app.use(cors({
     origin: process.env.NODE_ENV === 'production' 
-        ? 'https://brew-co-production-56dd.up.railway.app'  // URL Railway kamu
+        ? 'https://brew-co-production-d2fe.up.railway.app'  // URL Railway kamu
         : 'http://localhost:3000',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
